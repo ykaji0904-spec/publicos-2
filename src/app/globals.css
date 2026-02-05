@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Mapbox GL JS requires its CSS for controls and popups */
+@import 'mapbox-gl/dist/mapbox-gl.css';
+
+/* ---------------------------------------------------------------------------
+ * Global Overrides
+ * --------------------------------------------------------------------------- */
+
+html,
+body,
+#__next {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Map container must fill viewport */
+.mapboxgl-map {
+  width: 100%;
+  height: 100%;
+}
+
+/* Custom scrollbar for sidebar panels */
+.pos-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.pos-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pos-scrollbar::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 3px;
+}
+
+/* Loading overlay animation */
+@keyframes pos-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.pos-loading-pulse {
+  animation: pos-pulse 2s ease-in-out infinite;
+}
