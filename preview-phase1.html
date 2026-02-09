@@ -4,435 +4,481 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>PublicOS 2.0 — Dual Engine</title>
-
-<!-- Mapbox GL JS v3 -->
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet" />
-
-<!-- CesiumJS -->
 <script src="https://cesium.com/downloads/cesiumjs/releases/1.119/Build/Cesium/Cesium.js"></script>
 <link href="https://cesium.com/downloads/cesiumjs/releases/1.119/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
-
-<!-- deck.gl -->
 <script src="https://unpkg.com/deck.gl@9.0.16/dist.min.js"></script>
-
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap');
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'JetBrains Mono', monospace; background: #0A1628; color: #E5E7EB; overflow: hidden; height: 100vh; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'JetBrains Mono',monospace;background:#0A1628;color:#E5E7EB;overflow:hidden;height:100vh}
+  #mapbox-container,#cesium-container{position:absolute;inset:0;transition:opacity .5s}
+  #mapbox-container.hidden,#cesium-container.hidden{opacity:0;pointer-events:none;z-index:0}
+  #mapbox-container:not(.hidden),#cesium-container:not(.hidden){opacity:1;z-index:1}
+  .cesium-viewer-bottom,.cesium-viewer-animationContainer,.cesium-viewer-timelineContainer,.cesium-viewer-fullscreenContainer{display:none!important}
+  .cesium-viewer .cesium-widget-credits{display:none!important}
+  .cesium-viewer-toolbar{right:12px!important;top:60px!important}
 
-  /* Engine containers */
-  #mapbox-container, #cesium-container { position: absolute; inset: 0; transition: opacity 0.5s; }
-  #mapbox-container.hidden, #cesium-container.hidden { opacity: 0; pointer-events: none; z-index: 0; }
-  #mapbox-container:not(.hidden), #cesium-container:not(.hidden) { opacity: 1; z-index: 1; }
-
-  /* Cesium overrides */
-  .cesium-viewer-bottom, .cesium-viewer-animationContainer, 
-  .cesium-viewer-timelineContainer, .cesium-viewer-fullscreenContainer { display: none !important; }
-  .cesium-viewer .cesium-widget-credits { display: none !important; }
-  .cesium-viewer-toolbar { right: 12px !important; top: 60px !important; }
+  /* Shared UI Panel Style */
+  .ui-panel{background:rgba(17,24,39,.92);backdrop-filter:blur(12px);border:1px solid #1F2937;border-radius:8px;font-size:11px}
+  .label{color:#6B7280}.value{color:#3B82F6;font-weight:600}
+  .tag{display:inline-block;background:rgba(59,130,246,.15);color:#3B82F6;padding:2px 8px;border-radius:4px;font-size:9px;font-weight:600;margin-right:4px;margin-top:4px}
 
   /* Coord Display */
-  .coord-display {
-    position: absolute; top: 12px; left: 12px; z-index: 20;
-    background: rgba(17,24,39,0.92); backdrop-filter: blur(12px);
-    border: 1px solid #1F2937; border-radius: 8px;
-    padding: 10px 14px; font-size: 11px; line-height: 1.6; pointer-events: none;
-  }
-  .coord-display .label { color: #6B7280; }
-  .coord-display .value { color: #3B82F6; font-weight: 600; }
+  .coord-display{position:absolute;top:12px;left:12px;z-index:20;padding:10px 14px;line-height:1.6;pointer-events:none}
 
   /* Engine Switcher */
-  .engine-switcher {
-    position: absolute; top: 12px; right: 60px; z-index: 20;
-    display: flex; gap: 0; border-radius: 8px; overflow: hidden;
-    border: 1px solid #1F2937;
-  }
-  .engine-btn {
-    background: rgba(17,24,39,0.92); backdrop-filter: blur(12px);
-    padding: 10px 16px; font-family: 'JetBrains Mono', monospace;
-    font-size: 11px; font-weight: 600; color: #6B7280;
-    cursor: pointer; border: none; transition: all 0.2s;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .engine-btn:hover { color: #E5E7EB; background: rgba(59,130,246,0.1); }
-  .engine-btn.active { color: #3B82F6; background: rgba(59,130,246,0.15); }
-  .engine-btn .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .engine-switcher{position:absolute;top:12px;right:60px;z-index:20;display:flex;gap:0;border-radius:8px;overflow:hidden;border:1px solid #1F2937}
+  .engine-btn{background:rgba(17,24,39,.92);backdrop-filter:blur(12px);padding:10px 16px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:#6B7280;cursor:pointer;border:none;transition:all .2s;display:flex;align-items:center;gap:6px}
+  .engine-btn:hover{color:#E5E7EB;background:rgba(59,130,246,.1)}
+  .engine-btn.active{color:#3B82F6;background:rgba(59,130,246,.15)}
+  .engine-btn .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
 
   /* Info Card */
-  .info-card {
-    position: absolute; top: 60px; right: 60px; z-index: 20;
-    background: rgba(17,24,39,0.92); backdrop-filter: blur(12px);
-    border: 1px solid #1F2937; border-radius: 8px;
-    padding: 12px 16px; max-width: 260px; font-size: 10px;
-  }
-  .info-card h2 { font-size: 13px; font-weight: 700; color: #3B82F6; margin-bottom: 6px; }
-  .info-card p { color: #6B7280; line-height: 1.5; margin-bottom: 4px; }
-  .info-card .tag {
-    display: inline-block; background: rgba(59,130,246,0.15);
-    color: #3B82F6; padding: 2px 8px; border-radius: 4px;
-    font-size: 9px; font-weight: 600; margin-right: 4px; margin-top: 4px;
-  }
+  .info-card{position:absolute;top:60px;right:60px;z-index:20;padding:12px 16px;max-width:260px;font-size:10px}
+  .info-card h2{font-size:13px;font-weight:700;color:#3B82F6;margin-bottom:6px}
+  .info-card p{color:#6B7280;line-height:1.5;margin-bottom:4px}
+
+  /* Route Panel */
+  .route-panel{position:absolute;top:110px;left:12px;z-index:20;padding:0;width:280px;overflow:hidden;transition:all .3s}
+  .route-panel.collapsed{height:36px}
+  .route-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;user-select:none}
+  .route-header:hover{background:rgba(59,130,246,.05)}
+  .route-header h3{font-size:12px;font-weight:700;color:#3B82F6;display:flex;align-items:center;gap:6px}
+  .route-toggle{color:#6B7280;font-size:14px;transition:transform .3s}
+  .route-panel.collapsed .route-toggle{transform:rotate(-90deg)}
+  .route-body{padding:0 14px 12px}
+  .route-input-group{margin-bottom:8px}
+  .route-input-group label{font-size:9px;color:#6B7280;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px}
+  .route-input{width:100%;background:#1F2937;border:1px solid #374151;border-radius:5px;padding:7px 10px;color:#E5E7EB;font-family:'JetBrains Mono',monospace;font-size:10px;outline:none;transition:border-color .2s}
+  .route-input:focus{border-color:#3B82F6}
+  .route-input.set{border-color:#22C55E;color:#22C55E}
+  .route-modes{display:flex;gap:4px;margin-bottom:10px}
+  .mode-btn{flex:1;padding:6px;background:#1F2937;border:1px solid #374151;border-radius:5px;color:#6B7280;font-family:'JetBrains Mono',monospace;font-size:9px;cursor:pointer;text-align:center;transition:all .15s}
+  .mode-btn:hover{border-color:#3B82F6;color:#3B82F6}
+  .mode-btn.active{background:rgba(59,130,246,.15);border-color:#3B82F6;color:#3B82F6}
+  .route-actions{display:flex;gap:6px}
+  .route-btn{flex:1;padding:7px;border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;cursor:pointer;border:none;transition:all .15s}
+  .route-btn.primary{background:#3B82F6;color:#fff}
+  .route-btn.primary:hover{background:#2563EB}
+  .route-btn.primary:disabled{background:#374151;color:#6B7280;cursor:default}
+  .route-btn.secondary{background:#1F2937;color:#6B7280;border:1px solid #374151}
+  .route-btn.secondary:hover{border-color:#EF4444;color:#EF4444}
+  .route-result{margin-top:10px;padding:10px;background:#1F2937;border-radius:6px;display:none}
+  .route-result.show{display:block}
+  .route-stat{display:flex;justify-content:space-between;margin-bottom:4px}
+  .route-stat .stat-label{color:#6B7280;font-size:10px}
+  .route-stat .stat-value{color:#E5E7EB;font-size:11px;font-weight:600}
+  .route-steps{margin-top:8px;max-height:150px;overflow-y:auto}
+  .route-steps::-webkit-scrollbar{width:4px}
+  .route-steps::-webkit-scrollbar-thumb{background:#374151;border-radius:2px}
+  .route-step{padding:4px 0;border-bottom:1px solid #374151;font-size:9px;color:#9CA3AF;line-height:1.4}
+  .route-step:last-child{border-bottom:none}
+  .route-hint{font-size:9px;color:#6B7280;text-align:center;padding:8px 0;line-height:1.4}
+  .route-hint span{color:#3B82F6}
 
   /* Location Nav */
-  .location-nav {
-    position: absolute; bottom: 40px; left: 12px; z-index: 20;
-    display: flex; flex-direction: column; gap: 4px;
-  }
-  .loc-btn {
-    background: rgba(17,24,39,0.92); backdrop-filter: blur(12px);
-    border: 1px solid #1F2937; border-radius: 6px;
-    padding: 6px 12px; font-family: 'JetBrains Mono', monospace;
-    font-size: 10px; color: #E5E7EB; cursor: pointer; transition: all 0.15s; text-align: left;
-  }
-  .loc-btn:hover { background: rgba(59,130,246,0.15); border-color: #3B82F6; color: #3B82F6; }
-  .loc-btn .loc-label { display: block; font-weight: 600; }
-  .loc-btn .loc-desc { color: #6B7280; font-size: 9px; }
+  .location-nav{position:absolute;bottom:40px;left:12px;z-index:20;display:flex;flex-direction:column;gap:4px}
+  .loc-btn{background:rgba(17,24,39,.92);backdrop-filter:blur(12px);border:1px solid #1F2937;border-radius:6px;padding:6px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#E5E7EB;cursor:pointer;transition:all .15s;text-align:left}
+  .loc-btn:hover{background:rgba(59,130,246,.15);border-color:#3B82F6;color:#3B82F6}
+  .loc-btn .loc-label{display:block;font-weight:600}
+  .loc-btn .loc-desc{color:#6B7280;font-size:9px}
 
   /* Status Bar */
-  .status-bar {
-    position: absolute; bottom: 0; left: 0; right: 0; height: 28px; z-index: 20;
-    background: rgba(17,24,39,0.85); backdrop-filter: blur(8px);
-    border-top: 1px solid #1F2937;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 12px; font-size: 10px;
-  }
-  .status-bar .phase { color: #6B7280; }
-  .status-bar .engine-status { display: flex; align-items: center; gap: 6px; color: #6B7280; }
-  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #22C55E; }
+  .status-bar{position:absolute;bottom:0;left:0;right:0;height:28px;z-index:20;background:rgba(17,24,39,.85);backdrop-filter:blur(8px);border-top:1px solid #1F2937;display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:10px}
+  .status-bar .phase{color:#6B7280}
+  .status-bar .engine-status{display:flex;align-items:center;gap:6px;color:#6B7280}
+  .status-dot{width:6px;height:6px;border-radius:50%;background:#22C55E}
 
   /* Loading */
-  .loading-screen {
-    position: fixed; inset: 0; background: #0A1628;
-    display: flex; align-items: center; justify-content: center;
-    z-index: 100; transition: opacity 0.8s;
-  }
-  .loading-screen.fade { opacity: 0; pointer-events: none; }
-  .loading-title { font-size: 32px; font-weight: 700; color: #3B82F6; animation: pulse 2s ease-in-out infinite; }
-  .loading-sub { font-size: 12px; color: #6B7280; margin-top: 8px; text-align: center; }
-  @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+  .loading-screen{position:fixed;inset:0;background:#0A1628;display:flex;align-items:center;justify-content:center;z-index:100;transition:opacity .8s}
+  .loading-screen.fade{opacity:0;pointer-events:none}
+  .loading-title{font-size:32px;font-weight:700;color:#3B82F6;animation:pulse 2s ease-in-out infinite}
+  .loading-sub{font-size:12px;color:#6B7280;margin-top:8px;text-align:center}
+  @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
 
-  /* Mapbox control overrides */
-  .mapboxgl-ctrl-group { background: #111827 !important; border: 1px solid #1F2937 !important; }
-  .mapboxgl-ctrl-group button { filter: invert(1); }
-  .mapboxgl-ctrl-scale {
-    background: rgba(17,24,39,0.8) !important; color: #E5E7EB !important;
-    border-color: #374151 !important; font-family: 'JetBrains Mono', monospace !important; font-size: 10px !important;
-  }
+  /* Mapbox overrides */
+  .mapboxgl-ctrl-group{background:#111827!important;border:1px solid #1F2937!important}
+  .mapboxgl-ctrl-group button{filter:invert(1)}
+  .mapboxgl-ctrl-scale{background:rgba(17,24,39,.8)!important;color:#E5E7EB!important;border-color:#374151!important;font-family:'JetBrains Mono',monospace!important;font-size:10px!important}
+
+  /* Route markers */
+  .route-marker{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#fff;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+  .route-marker.start{background:#22C55E}
+  .route-marker.end{background:#EF4444}
 </style>
 </head>
 <body>
 
-<!-- Loading -->
 <div class="loading-screen" id="loading">
-  <div>
-    <div class="loading-title">PublicOS 2.0</div>
-    <div class="loading-sub">Initializing dual spatial engines...</div>
-  </div>
+  <div><div class="loading-title">PublicOS 2.0</div><div class="loading-sub">Initializing dual spatial engines...</div></div>
 </div>
 
-<!-- Map Containers -->
 <div id="mapbox-container"></div>
 <div id="cesium-container" class="hidden"></div>
 
 <!-- Engine Switcher -->
 <div class="engine-switcher">
-  <button class="engine-btn active" id="btn-mapbox" onclick="switchEngine('mapbox')">
-    <span class="dot"></span> Mapbox 2.5D
-  </button>
-  <button class="engine-btn" id="btn-cesium" onclick="switchEngine('cesium')">
-    <span class="dot"></span> Cesium 3D
-  </button>
+  <button class="engine-btn active" id="btn-mapbox" onclick="switchEngine('mapbox')"><span class="dot"></span> Mapbox 2.5D</button>
+  <button class="engine-btn" id="btn-cesium" onclick="switchEngine('cesium')"><span class="dot"></span> Cesium 3D</button>
 </div>
 
 <!-- Info Card -->
-<div class="info-card" id="info-card">
+<div class="info-card ui-panel" id="info-card">
   <h2 id="info-title">Mapbox GL JS v3</h2>
-  <p id="info-desc">都市レベルの高速レンダリング。ベクタータイル + 3D建物 + 地形。消防・配送の業務分析に最適。</p>
-  <div id="info-tags">
-    <span class="tag">2.5D</span>
-    <span class="tag">Vector Tiles</span>
-    <span class="tag">deck.gl</span>
-    <span class="tag">60fps</span>
-  </div>
+  <p id="info-desc">都市レベルの高速レンダリング + ルート検索</p>
+  <div id="info-tags"><span class="tag">2.5D</span><span class="tag">Directions</span><span class="tag">deck.gl</span><span class="tag">60fps</span></div>
 </div>
 
 <!-- Coordinates -->
-<div class="coord-display" id="coords">
-  <div>
-    <span class="label">LNG </span><span class="value" id="c-lng">—</span>
-    <span class="label" style="margin-left:12px">LAT </span><span class="value" id="c-lat">—</span>
+<div class="coord-display ui-panel" id="coords">
+  <div><span class="label">LNG </span><span class="value" id="c-lng">—</span><span class="label" style="margin-left:12px">LAT </span><span class="value" id="c-lat">—</span></div>
+  <div><span class="label">ZOOM </span><span class="value" id="c-zoom">—</span><span class="label" style="margin-left:12px">ALT </span><span class="value" id="c-alt">—</span><span class="label" style="margin-left:12px">ENGINE </span><span class="value" id="c-engine">MAPBOX</span></div>
+</div>
+
+<!-- Route Panel -->
+<div class="route-panel ui-panel" id="route-panel">
+  <div class="route-header" onclick="toggleRoutePanel()">
+    <h3>🧭 ルート検索</h3>
+    <span class="route-toggle" id="route-toggle">▼</span>
   </div>
-  <div>
-    <span class="label">ZOOM </span><span class="value" id="c-zoom">—</span>
-    <span class="label" style="margin-left:12px">ALT </span><span class="value" id="c-alt">—</span>
-    <span class="label" style="margin-left:12px">ENGINE </span><span class="value" id="c-engine">MAPBOX</span>
+  <div class="route-body">
+    <div class="route-hint">地図を<span>クリック</span>して出発地と目的地を設定<br>または座標が自動入力されます</div>
+    <div class="route-input-group">
+      <label>出発地 (Start)</label>
+      <input class="route-input" id="input-start" readonly placeholder="地図をクリック..." />
+    </div>
+    <div class="route-input-group">
+      <label>目的地 (End)</label>
+      <input class="route-input" id="input-end" readonly placeholder="地図をクリック..." />
+    </div>
+    <div class="route-modes">
+      <button class="mode-btn active" data-mode="driving" onclick="setMode('driving')">🚗 車</button>
+      <button class="mode-btn" data-mode="walking" onclick="setMode('walking')">🚶 徒歩</button>
+      <button class="mode-btn" data-mode="cycling" onclick="setMode('cycling')">🚲 自転車</button>
+    </div>
+    <div class="route-actions">
+      <button class="route-btn primary" id="btn-search" onclick="searchRoute()" disabled>ルート検索</button>
+      <button class="route-btn secondary" onclick="clearRoute()">クリア</button>
+    </div>
+    <div class="route-result" id="route-result">
+      <div class="route-stat"><span class="stat-label">距離</span><span class="stat-value" id="r-distance">—</span></div>
+      <div class="route-stat"><span class="stat-label">所要時間</span><span class="stat-value" id="r-duration">—</span></div>
+      <div class="route-stat"><span class="stat-label">モード</span><span class="stat-value" id="r-mode">—</span></div>
+      <div class="route-steps" id="r-steps"></div>
+    </div>
   </div>
 </div>
 
 <!-- Location Nav -->
 <div class="location-nav">
-  <button class="loc-btn" onclick="flyTo(132.4553, 34.3853, 14.5, 60)">
-    <span class="loc-label">広島市</span>
-    <span class="loc-desc">Home — 消防局エリア</span>
-  </button>
-  <button class="loc-btn" onclick="flyTo(139.7670, 35.6812, 15.5, 60)">
-    <span class="loc-label">東京 丸の内</span>
-    <span class="loc-desc">3D Buildings Demo</span>
-  </button>
-  <button class="loc-btn" onclick="flyTo(135.5023, 34.6937, 15, 55)">
-    <span class="loc-label">大阪 梅田</span>
-    <span class="loc-desc">Dense Urban Area</span>
-  </button>
-  <button class="loc-btn" onclick="flyTo(132.4553, 34.3853, 11, 70)">
-    <span class="loc-label">広島 広域</span>
-    <span class="loc-desc">Terrain Overview</span>
-  </button>
-  <button class="loc-btn" onclick="flyTo(139.69, 35.69, 17, 75)">
-    <span class="loc-label">新宿 高層ビル群</span>
-    <span class="loc-desc">Cesiumで見ると圧巻</span>
-  </button>
+  <button class="loc-btn" onclick="flyTo(132.4553,34.3853,14.5,60)"><span class="loc-label">広島市</span><span class="loc-desc">Home — 消防局エリア</span></button>
+  <button class="loc-btn" onclick="flyTo(139.7670,35.6812,15.5,60)"><span class="loc-label">東京 丸の内</span><span class="loc-desc">3D Buildings</span></button>
+  <button class="loc-btn" onclick="flyTo(135.5023,34.6937,15,55)"><span class="loc-label">大阪 梅田</span><span class="loc-desc">Dense Urban</span></button>
+  <button class="loc-btn" onclick="flyTo(132.4553,34.3853,11,70)"><span class="loc-label">広島 広域</span><span class="loc-desc">Terrain</span></button>
 </div>
 
 <!-- Status Bar -->
 <div class="status-bar">
-  <span class="phase">PublicOS 2.0 — Dual Engine: Mapbox + Cesium</span>
-  <span class="engine-status">
-    <span class="status-dot"></span>
-    <span id="status-text">Ready</span>
-  </span>
+  <span class="phase">PublicOS 2.0 — Dual Engine + Routing</span>
+  <span class="engine-status"><span class="status-dot"></span><span id="status-text">Ready</span></span>
 </div>
 
 <script>
 // =========================================================================
-// PublicOS 2.0 — Dual Engine: Mapbox GL JS v3 + CesiumJS
+// PublicOS 2.0 — Dual Engine + Mapbox Directions
 // =========================================================================
 
 let currentEngine = 'mapbox';
 let mapboxMap = null;
 let cesiumViewer = null;
-let cesiumReady = false;
+let startMarker = null;
+let endMarker = null;
+let routeStart = null;
+let routeEnd = null;
+let routeMode = 'driving';
+let clickState = 'start'; // 'start' or 'end'
 
-// --- Mapbox Initialization ---
-mapboxgl.accessToken = 'pk.eyJ1IjoieWtvZmZzaG9yZSIsImEiOiJjbWxhMXZyMDEwODBwM2NzOWJ0ZnQ5eXhyIn0.4oPrQipt35-MlYZgYr4XTw';
+const MAPBOX_TOKEN = 'pk.eyJ1IjoieWtvZmZzaG9yZSIsImEiOiJjbWxhMXZyMDEwODBwM2NzOWJ0ZnQ5eXhyIn0.4oPrQipt35-MlYZgYr4XTw';
 
+// === MAPBOX INIT ===
+mapboxgl.accessToken = MAPBOX_TOKEN;
 mapboxMap = new mapboxgl.Map({
-  container: 'mapbox-container',
-  style: 'mapbox://styles/mapbox/dark-v11',
-  center: [132.4553, 34.3853],
-  zoom: 12, pitch: 45, bearing: 0, antialias: true,
+  container:'mapbox-container', style:'mapbox://styles/mapbox/dark-v11',
+  center:[132.4553,34.3853], zoom:12, pitch:45, bearing:0, antialias:true,
 });
 
-const deckOverlay = new deck.MapboxOverlay({ interleaved: true, layers: [] });
+const deckOverlay = new deck.MapboxOverlay({interleaved:true,layers:[]});
 mapboxMap.addControl(deckOverlay);
-mapboxMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
-mapboxMap.addControl(new mapboxgl.ScaleControl({ maxWidth: 200, unit: 'metric' }), 'bottom-left');
+mapboxMap.addControl(new mapboxgl.NavigationControl(),'top-right');
+mapboxMap.addControl(new mapboxgl.ScaleControl({maxWidth:200,unit:'metric'}),'bottom-left');
 
 mapboxMap.on('style.load', () => {
-  // Terrain
-  mapboxMap.addSource('mapbox-dem', {
-    type: 'raster-dem', url: 'mapbox://mapbox.mapbox-terrain-dem-v1', tileSize: 512, maxzoom: 14,
-  });
-  mapboxMap.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+  mapboxMap.addSource('mapbox-dem',{type:'raster-dem',url:'mapbox://mapbox.mapbox-terrain-dem-v1',tileSize:512,maxzoom:14});
+  mapboxMap.setTerrain({source:'mapbox-dem',exaggeration:1.5});
+  mapboxMap.addLayer({id:'sky',type:'sky',paint:{'sky-type':'atmosphere','sky-atmosphere-sun':[0,45],'sky-atmosphere-sun-intensity':15}});
 
-  // Sky
+  const labelLayer = mapboxMap.getStyle().layers.find(l => l.type==='symbol'&&l.layout?.['text-field']);
   mapboxMap.addLayer({
-    id: 'sky', type: 'sky',
-    paint: { 'sky-type': 'atmosphere', 'sky-atmosphere-sun': [0, 45], 'sky-atmosphere-sun-intensity': 15 },
-  });
-
-  // 3D Buildings
-  const labelLayer = mapboxMap.getStyle().layers.find(l => l.type === 'symbol' && l.layout?.['text-field']);
-  mapboxMap.addLayer({
-    id: '3d-buildings', source: 'composite', 'source-layer': 'building',
-    filter: ['==', 'extrude', 'true'], type: 'fill-extrusion', minzoom: 14,
-    paint: {
-      'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'height'],
-        0, '#1a1a2e', 50, '#16213e', 100, '#0f3460', 200, '#533483'],
-      'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.05, ['get', 'height']],
-      'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.05, ['get', 'min_height']],
-      'fill-extrusion-opacity': 0.75,
+    id:'3d-buildings',source:'composite','source-layer':'building',
+    filter:['==','extrude','true'],type:'fill-extrusion',minzoom:14,
+    paint:{
+      'fill-extrusion-color':['interpolate',['linear'],['get','height'],0,'#1a1a2e',50,'#16213e',100,'#0f3460',200,'#533483'],
+      'fill-extrusion-height':['interpolate',['linear'],['zoom'],14,0,14.05,['get','height']],
+      'fill-extrusion-base':['interpolate',['linear'],['zoom'],14,0,14.05,['get','min_height']],
+      'fill-extrusion-opacity':.75,
     },
   }, labelLayer?.id);
+
+  // Route source (added once, updated later)
+  mapboxMap.addSource('route',{type:'geojson',data:{type:'Feature',geometry:{type:'LineString',coordinates:[]}}});
+  mapboxMap.addLayer({
+    id:'route-line',type:'line',source:'route',
+    layout:{'line-join':'round','line-cap':'round'},
+    paint:{'line-color':'#3B82F6','line-width':5,'line-opacity':.85}
+  });
+  mapboxMap.addLayer({
+    id:'route-line-border',type:'line',source:'route',
+    layout:{'line-join':'round','line-cap':'round'},
+    paint:{'line-color':'#1E40AF','line-width':8,'line-opacity':.4}
+  }, 'route-line');
 });
 
-mapboxMap.on('mousemove', (e) => {
+// === CLICK TO SET ROUTE POINTS ===
+mapboxMap.on('click', (e) => {
   if (currentEngine !== 'mapbox') return;
+  const lngLat = [e.lngLat.lng, e.lngLat.lat];
+
+  if (clickState === 'start') {
+    routeStart = lngLat;
+    if (startMarker) startMarker.remove();
+    const el = document.createElement('div');
+    el.className = 'route-marker start';
+    el.textContent = 'S';
+    startMarker = new mapboxgl.Marker({element:el,draggable:true}).setLngLat(lngLat).addTo(mapboxMap);
+    startMarker.on('dragend', () => {
+      const pos = startMarker.getLngLat();
+      routeStart = [pos.lng, pos.lat];
+      document.getElementById('input-start').value = pos.lng.toFixed(4)+', '+pos.lat.toFixed(4);
+      document.getElementById('input-start').classList.add('set');
+      updateSearchBtn();
+      if (routeEnd) searchRoute();
+    });
+    document.getElementById('input-start').value = lngLat[0].toFixed(4)+', '+lngLat[1].toFixed(4);
+    document.getElementById('input-start').classList.add('set');
+    clickState = 'end';
+  } else {
+    routeEnd = lngLat;
+    if (endMarker) endMarker.remove();
+    const el = document.createElement('div');
+    el.className = 'route-marker end';
+    el.textContent = 'E';
+    endMarker = new mapboxgl.Marker({element:el,draggable:true}).setLngLat(lngLat).addTo(mapboxMap);
+    endMarker.on('dragend', () => {
+      const pos = endMarker.getLngLat();
+      routeEnd = [pos.lng, pos.lat];
+      document.getElementById('input-end').value = pos.lng.toFixed(4)+', '+pos.lat.toFixed(4);
+      document.getElementById('input-end').classList.add('set');
+      if (routeStart) searchRoute();
+    });
+    document.getElementById('input-end').value = lngLat[0].toFixed(4)+', '+lngLat[1].toFixed(4);
+    document.getElementById('input-end').classList.add('set');
+    clickState = 'start';
+    // Auto-search when both are set
+    if (routeStart) searchRoute();
+  }
+  updateSearchBtn();
+});
+
+// === DIRECTIONS API ===
+async function searchRoute() {
+  if (!routeStart || !routeEnd) return;
+  const btn = document.getElementById('btn-search');
+  btn.textContent = '検索中...';
+  btn.disabled = true;
+
+  try {
+    const url = `https://api.mapbox.com/directions/v5/mapbox/${routeMode}/${routeStart[0]},${routeStart[1]};${routeEnd[0]},${routeEnd[1]}?alternatives=false&geometries=geojson&overview=full&steps=true&language=ja&access_token=${MAPBOX_TOKEN}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (!data.routes || data.routes.length === 0) {
+      alert('ルートが見つかりませんでした');
+      btn.textContent = 'ルート検索';
+      btn.disabled = false;
+      return;
+    }
+
+    const route = data.routes[0];
+    const coords = route.geometry.coordinates;
+
+    // Draw route
+    mapboxMap.getSource('route').setData({type:'Feature',geometry:{type:'LineString',coordinates:coords}});
+
+    // Fit bounds
+    const bounds = coords.reduce((b,c) => b.extend(c), new mapboxgl.LngLatBounds(coords[0],coords[0]));
+    mapboxMap.fitBounds(bounds, {padding:{top:150,bottom:60,left:320,right:100},duration:1500});
+
+    // Show results
+    const dist = route.distance;
+    const dur = route.duration;
+    document.getElementById('r-distance').textContent = dist >= 1000 ? (dist/1000).toFixed(1)+' km' : Math.round(dist)+' m';
+    document.getElementById('r-duration').textContent = formatDuration(dur);
+    const modeLabels = {driving:'🚗 車',walking:'🚶 徒歩',cycling:'🚲 自転車'};
+    document.getElementById('r-mode').textContent = modeLabels[routeMode];
+
+    // Steps
+    const stepsEl = document.getElementById('r-steps');
+    stepsEl.innerHTML = '';
+    if (route.legs[0]?.steps) {
+      route.legs[0].steps.forEach((step, i) => {
+        const div = document.createElement('div');
+        div.className = 'route-step';
+        const stepDist = step.distance >= 1000 ? (step.distance/1000).toFixed(1)+'km' : Math.round(step.distance)+'m';
+        div.textContent = `${i+1}. ${step.maneuver.instruction} (${stepDist})`;
+        stepsEl.appendChild(div);
+      });
+    }
+
+    document.getElementById('route-result').classList.add('show');
+  } catch(err) {
+    console.error('[PublicOS] Route error:', err);
+    alert('ルート検索に失敗しました');
+  }
+
+  btn.textContent = 'ルート検索';
+  btn.disabled = false;
+}
+
+function formatDuration(sec) {
+  if (sec < 60) return Math.round(sec)+'秒';
+  if (sec < 3600) return Math.round(sec/60)+'分';
+  const h = Math.floor(sec/3600);
+  const m = Math.round((sec%3600)/60);
+  return h+'時間'+m+'分';
+}
+
+function clearRoute() {
+  routeStart = null; routeEnd = null; clickState = 'start';
+  if (startMarker) { startMarker.remove(); startMarker = null; }
+  if (endMarker) { endMarker.remove(); endMarker = null; }
+  document.getElementById('input-start').value = '';
+  document.getElementById('input-end').value = '';
+  document.getElementById('input-start').classList.remove('set');
+  document.getElementById('input-end').classList.remove('set');
+  document.getElementById('route-result').classList.remove('show');
+  document.getElementById('r-steps').innerHTML = '';
+  if (mapboxMap.getSource('route')) {
+    mapboxMap.getSource('route').setData({type:'Feature',geometry:{type:'LineString',coordinates:[]}});
+  }
+  updateSearchBtn();
+}
+
+function setMode(mode) {
+  routeMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode===mode));
+  if (routeStart && routeEnd) searchRoute();
+}
+
+function updateSearchBtn() {
+  document.getElementById('btn-search').disabled = !(routeStart && routeEnd);
+}
+
+function toggleRoutePanel() {
+  document.getElementById('route-panel').classList.toggle('collapsed');
+}
+
+// === COORDINATE DISPLAY ===
+mapboxMap.on('mousemove', (e) => {
+  if (currentEngine!=='mapbox') return;
   document.getElementById('c-lng').textContent = e.lngLat.lng.toFixed(4);
   document.getElementById('c-lat').textContent = e.lngLat.lat.toFixed(4);
   document.getElementById('c-zoom').textContent = mapboxMap.getZoom().toFixed(1);
   document.getElementById('c-alt').textContent = '—';
 });
-
 mapboxMap.on('move', () => {
-  if (currentEngine !== 'mapbox') return;
+  if (currentEngine!=='mapbox') return;
   document.getElementById('c-zoom').textContent = mapboxMap.getZoom().toFixed(1);
 });
-
 mapboxMap.on('load', () => {
   document.getElementById('loading').classList.add('fade');
-  console.info('[PublicOS] Mapbox engine ready');
+  console.info('[PublicOS] Mapbox engine ready + Directions API');
 });
 
-// --- Cesium Lazy Initialization ---
+// === CESIUM LAZY INIT ===
 function initCesium() {
   if (cesiumViewer) return;
-
   Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI1ZGE4YzY1NS0wMjdmLTQ4NjMtOWQ1ZC05MTNmMDFhYWU3OWIiLCJpZCI6MjY5NzIzLCJpYXQiOjE3MzY3Mjk3MDB9.jRFkNSDE5YEbQDChn3D5znRkSNBnZgQOSfAMwBDCH_A';
-
   cesiumViewer = new Cesium.Viewer('cesium-container', {
-    terrain: Cesium.Terrain.fromWorldTerrain(),
-    baseLayerPicker: true,
-    geocoder: false,
-    homeButton: false,
-    sceneModePicker: false,
-    navigationHelpButton: false,
-    infoBox: false,
-    selectionIndicator: false,
-    timeline: false,
-    animation: false,
-    fullscreenButton: false,
+    terrain: Cesium.Terrain.fromWorldTerrain(), baseLayerPicker:true, geocoder:false,
+    homeButton:false, sceneModePicker:false, navigationHelpButton:false, infoBox:false,
+    selectionIndicator:false, timeline:false, animation:false, fullscreenButton:false,
     creditContainer: document.createElement('div'),
   });
-
-  // Dark atmosphere
   cesiumViewer.scene.globe.enableLighting = true;
   cesiumViewer.scene.fog.enabled = true;
   cesiumViewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#0A1628');
-
-  // Cesium OSM Buildings
-  Cesium.createOsmBuildingsAsync().then(tileset => {
-    cesiumViewer.scene.primitives.add(tileset);
-    tileset.style = new Cesium.Cesium3DTileStyle({
-      color: {
-        conditions: [
-          ['${feature["cesium#estimatedHeight"]} >= 100', 'color("#533483", 0.8)'],
-          ['${feature["cesium#estimatedHeight"]} >= 50', 'color("#0f3460", 0.8)'],
-          ['${feature["cesium#estimatedHeight"]} >= 20', 'color("#16213e", 0.8)'],
-          ['true', 'color("#1a1a2e", 0.75)'],
-        ],
-      },
-    });
-    console.info('[PublicOS] Cesium OSM Buildings loaded');
+  Cesium.createOsmBuildingsAsync().then(t => {
+    cesiumViewer.scene.primitives.add(t);
+    t.style = new Cesium.Cesium3DTileStyle({color:{conditions:[
+      ['${feature["cesium#estimatedHeight"]}>=100','color("#533483",.8)'],
+      ['${feature["cesium#estimatedHeight"]}>=50','color("#0f3460",.8)'],
+      ['${feature["cesium#estimatedHeight"]}>=20','color("#16213e",.8)'],
+      ['true','color("#1a1a2e",.75)']
+    ]}});
   });
-
-  // Track mouse in Cesium
   const handler = new Cesium.ScreenSpaceEventHandler(cesiumViewer.scene.canvas);
-  handler.setInputAction((movement) => {
-    if (currentEngine !== 'cesium') return;
-    const cartesian = cesiumViewer.scene.pickPosition(movement.endPosition);
-    if (cartesian) {
-      const carto = Cesium.Cartographic.fromCartesian(cartesian);
-      document.getElementById('c-lng').textContent = Cesium.Math.toDegrees(carto.longitude).toFixed(4);
-      document.getElementById('c-lat').textContent = Cesium.Math.toDegrees(carto.latitude).toFixed(4);
-      document.getElementById('c-alt').textContent = carto.height.toFixed(0) + 'm';
-      document.getElementById('c-zoom').textContent = '—';
-    }
+  handler.setInputAction((m) => {
+    if (currentEngine!=='cesium') return;
+    const c = cesiumViewer.scene.pickPosition(m.endPosition);
+    if(c){const g=Cesium.Cartographic.fromCartesian(c);document.getElementById('c-lng').textContent=Cesium.Math.toDegrees(g.longitude).toFixed(4);document.getElementById('c-lat').textContent=Cesium.Math.toDegrees(g.latitude).toFixed(4);document.getElementById('c-alt').textContent=g.height.toFixed(0)+'m';document.getElementById('c-zoom').textContent='—';}
   }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
-
-  cesiumReady = true;
-  console.info('[PublicOS] Cesium engine ready');
 }
 
-// --- Engine Switcher ---
+// === ENGINE SWITCHER ===
 function switchEngine(engine) {
-  if (engine === currentEngine) return;
-
-  // Sync camera position before switching
-  let lng, lat, alt, heading, pitch;
-
-  if (currentEngine === 'mapbox') {
-    const center = mapboxMap.getCenter();
-    lng = center.lng;
-    lat = center.lat;
-    alt = zoomToAltitude(mapboxMap.getZoom());
-    heading = mapboxMap.getBearing();
-    pitch = mapboxMap.getPitch();
+  if (engine===currentEngine) return;
+  let lng,lat,alt,heading,pitch;
+  if (currentEngine==='mapbox') {
+    const c=mapboxMap.getCenter();lng=c.lng;lat=c.lat;alt=zoomToAlt(mapboxMap.getZoom());heading=mapboxMap.getBearing();pitch=mapboxMap.getPitch();
   } else {
-    const cam = cesiumViewer.camera;
-    const carto = Cesium.Cartographic.fromCartesian(cam.position);
-    lng = Cesium.Math.toDegrees(carto.longitude);
-    lat = Cesium.Math.toDegrees(carto.latitude);
-    alt = carto.height;
-    heading = Cesium.Math.toDegrees(cam.heading);
-    pitch = Cesium.Math.toDegrees(cam.pitch);
+    const cam=cesiumViewer.camera;const g=Cesium.Cartographic.fromCartesian(cam.position);
+    lng=Cesium.Math.toDegrees(g.longitude);lat=Cesium.Math.toDegrees(g.latitude);alt=g.height;heading=Cesium.Math.toDegrees(cam.heading);pitch=Cesium.Math.toDegrees(cam.pitch);
   }
-
-  currentEngine = engine;
-
-  if (engine === 'cesium') {
-    if (!cesiumViewer) initCesium();
-
+  currentEngine=engine;
+  if (engine==='cesium') {
+    if(!cesiumViewer) initCesium();
     document.getElementById('mapbox-container').classList.add('hidden');
     document.getElementById('cesium-container').classList.remove('hidden');
-
-    cesiumViewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(lng, lat, alt),
-      orientation: {
-        heading: Cesium.Math.toRadians(heading || 0),
-        pitch: Cesium.Math.toRadians(-(90 - (pitch || 45))),
-        roll: 0,
-      },
-      duration: 0,
-    });
-
-    document.getElementById('c-engine').textContent = 'CESIUM';
-    document.getElementById('info-title').textContent = 'CesiumJS 1.119';
-    document.getElementById('info-desc').textContent = 'WGS84楕円体ベースの真の3D地球儀。高度・視線計算が物理的に正確。ドローン飛行・広域災害に最適。';
-    document.getElementById('info-tags').innerHTML = '<span class="tag">True 3D</span><span class="tag">WGS84</span><span class="tag">3D Tiles</span><span class="tag">Globe</span>';
-
+    cesiumViewer.camera.flyTo({destination:Cesium.Cartesian3.fromDegrees(lng,lat,alt),orientation:{heading:Cesium.Math.toRadians(heading||0),pitch:Cesium.Math.toRadians(-(90-(pitch||45))),roll:0},duration:0});
+    document.getElementById('c-engine').textContent='CESIUM';
+    document.getElementById('info-title').textContent='CesiumJS 1.119';
+    document.getElementById('info-desc').textContent='WGS84真の3D地球儀。高度・視線計算が正確。';
+    document.getElementById('info-tags').innerHTML='<span class="tag">True 3D</span><span class="tag">WGS84</span><span class="tag">3D Tiles</span><span class="tag">Globe</span>';
   } else {
     document.getElementById('cesium-container').classList.add('hidden');
     document.getElementById('mapbox-container').classList.remove('hidden');
-
-    mapboxMap.flyTo({
-      center: [lng, lat],
-      zoom: altitudeToZoom(alt),
-      bearing: heading || 0,
-      pitch: Math.min(pitch || 45, 85),
-      duration: 0,
-    });
+    mapboxMap.flyTo({center:[lng,lat],zoom:altToZoom(alt),bearing:heading||0,pitch:Math.min(pitch||45,85),duration:0});
     mapboxMap.resize();
-
-    document.getElementById('c-engine').textContent = 'MAPBOX';
-    document.getElementById('info-title').textContent = 'Mapbox GL JS v3';
-    document.getElementById('info-desc').textContent = '都市レベルの高速レンダリング。ベクタータイル + 3D建物 + 地形。消防・配送の業務分析に最適。';
-    document.getElementById('info-tags').innerHTML = '<span class="tag">2.5D</span><span class="tag">Vector Tiles</span><span class="tag">deck.gl</span><span class="tag">60fps</span>';
+    document.getElementById('c-engine').textContent='MAPBOX';
+    document.getElementById('info-title').textContent='Mapbox GL JS v3';
+    document.getElementById('info-desc').textContent='都市レベルの高速レンダリング + ルート検索';
+    document.getElementById('info-tags').innerHTML='<span class="tag">2.5D</span><span class="tag">Directions</span><span class="tag">deck.gl</span><span class="tag">60fps</span>';
   }
-
-  // Update button states
-  document.getElementById('btn-mapbox').classList.toggle('active', engine === 'mapbox');
-  document.getElementById('btn-cesium').classList.toggle('active', engine === 'cesium');
-  document.getElementById('status-text').textContent = engine === 'mapbox' ? 'Mapbox — Interleaved' : 'Cesium — WGS84 Globe';
+  document.getElementById('btn-mapbox').classList.toggle('active',engine==='mapbox');
+  document.getElementById('btn-cesium').classList.toggle('active',engine==='cesium');
+  document.getElementById('status-text').textContent=engine==='mapbox'?'Mapbox — Interleaved + Routing':'Cesium — WGS84 Globe';
 }
 
-// --- Navigation ---
-function flyTo(lng, lat, zoom, pitch) {
-  if (currentEngine === 'mapbox') {
-    mapboxMap.flyTo({ center: [lng, lat], zoom, pitch, bearing: 0, duration: 3000, essential: true });
-  } else {
-    const alt = zoomToAltitude(zoom);
-    cesiumViewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(lng, lat, alt),
-      orientation: {
-        heading: 0,
-        pitch: Cesium.Math.toRadians(-(90 - pitch)),
-        roll: 0,
-      },
-      duration: 3,
-    });
-  }
+// === NAV ===
+function flyTo(lng,lat,zoom,pitch) {
+  if(currentEngine==='mapbox'){mapboxMap.flyTo({center:[lng,lat],zoom,pitch,bearing:0,duration:3000,essential:true});}
+  else{cesiumViewer.camera.flyTo({destination:Cesium.Cartesian3.fromDegrees(lng,lat,zoomToAlt(zoom)),orientation:{heading:0,pitch:Cesium.Math.toRadians(-(90-pitch)),roll:0},duration:3});}
 }
 
-// --- Zoom <-> Altitude conversion ---
-function zoomToAltitude(zoom) {
-  return 40075016.686 * Math.cos(34.385 * Math.PI / 180) / Math.pow(2, zoom + 8) * 150;
-}
-
-function altitudeToZoom(alt) {
-  if (!alt || alt <= 0) return 12;
-  return Math.log2(40075016.686 * Math.cos(34.385 * Math.PI / 180) / (alt / 150)) - 8;
-}
+function zoomToAlt(z){return 40075016.686*Math.cos(34.385*Math.PI/180)/Math.pow(2,z+8)*150}
+function altToZoom(a){if(!a||a<=0)return 12;return Math.log2(40075016.686*Math.cos(34.385*Math.PI/180)/(a/150))-8}
 </script>
 </body>
 </html>
