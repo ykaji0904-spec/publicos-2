@@ -3,364 +3,435 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>PublicOS 2.0 — Phase 1: Sovereign Foundation</title>
+<title>PublicOS 2.0 — Dual Engine</title>
+
+<!-- Mapbox GL JS v3 -->
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet" />
+
+<!-- CesiumJS -->
+<script src="https://cesium.com/downloads/cesiumjs/releases/1.119/Build/Cesium/Cesium.js"></script>
+<link href="https://cesium.com/downloads/cesiumjs/releases/1.119/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+
+<!-- deck.gl -->
 <script src="https://unpkg.com/deck.gl@9.0.16/dist.min.js"></script>
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap');
-  
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  
-  body {
-    font-family: 'JetBrains Mono', monospace;
-    background: #0A1628;
-    color: #E5E7EB;
-    overflow: hidden;
-    height: 100vh;
-  }
+  body { font-family: 'JetBrains Mono', monospace; background: #0A1628; color: #E5E7EB; overflow: hidden; height: 100vh; }
 
-  #map { position: absolute; inset: 0; }
+  /* Engine containers */
+  #mapbox-container, #cesium-container { position: absolute; inset: 0; transition: opacity 0.5s; }
+  #mapbox-container.hidden, #cesium-container.hidden { opacity: 0; pointer-events: none; z-index: 0; }
+  #mapbox-container:not(.hidden), #cesium-container:not(.hidden) { opacity: 1; z-index: 1; }
 
-  /* Coordinate Display */
+  /* Cesium overrides */
+  .cesium-viewer-bottom, .cesium-viewer-animationContainer, 
+  .cesium-viewer-timelineContainer, .cesium-viewer-fullscreenContainer { display: none !important; }
+  .cesium-viewer .cesium-widget-credits { display: none !important; }
+  .cesium-viewer-toolbar { right: 12px !important; top: 60px !important; }
+
+  /* Coord Display */
   .coord-display {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    z-index: 10;
-    background: rgba(17, 24, 39, 0.92);
-    backdrop-filter: blur(12px);
-    border: 1px solid #1F2937;
-    border-radius: 8px;
-    padding: 10px 14px;
-    font-size: 11px;
-    line-height: 1.6;
-    pointer-events: none;
+    position: absolute; top: 12px; left: 12px; z-index: 20;
+    background: rgba(17,24,39,0.92); backdrop-filter: blur(12px);
+    border: 1px solid #1F2937; border-radius: 8px;
+    padding: 10px 14px; font-size: 11px; line-height: 1.6; pointer-events: none;
   }
   .coord-display .label { color: #6B7280; }
   .coord-display .value { color: #3B82F6; font-weight: 600; }
 
-  /* Status Bar */
-  .status-bar {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 28px;
-    background: rgba(17, 24, 39, 0.85);
-    backdrop-filter: blur(8px);
-    border-top: 1px solid #1F2937;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 12px;
-    font-size: 10px;
-    z-index: 10;
-  }
-  .status-bar .phase { color: #6B7280; }
-  .status-bar .engine-status {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: #6B7280;
-  }
-  .status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #FBBF24;
-    transition: background 0.3s;
-  }
-  .status-dot.ready { background: #22C55E; }
-
-  /* Title Card */
-  .title-card {
-    position: absolute;
-    top: 12px;
-    right: 60px;
-    z-index: 10;
-    background: rgba(17, 24, 39, 0.92);
-    backdrop-filter: blur(12px);
+  /* Engine Switcher */
+  .engine-switcher {
+    position: absolute; top: 12px; right: 60px; z-index: 20;
+    display: flex; gap: 0; border-radius: 8px; overflow: hidden;
     border: 1px solid #1F2937;
-    border-radius: 8px;
-    padding: 12px 16px;
-    max-width: 280px;
   }
-  .title-card h1 {
-    font-size: 14px;
-    font-weight: 700;
-    color: #3B82F6;
-    margin-bottom: 4px;
+  .engine-btn {
+    background: rgba(17,24,39,0.92); backdrop-filter: blur(12px);
+    padding: 10px 16px; font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 600; color: #6B7280;
+    cursor: pointer; border: none; transition: all 0.2s;
+    display: flex; align-items: center; gap: 6px;
   }
-  .title-card p {
-    font-size: 10px;
-    color: #6B7280;
-    line-height: 1.5;
+  .engine-btn:hover { color: #E5E7EB; background: rgba(59,130,246,0.1); }
+  .engine-btn.active { color: #3B82F6; background: rgba(59,130,246,0.15); }
+  .engine-btn .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* Info Card */
+  .info-card {
+    position: absolute; top: 60px; right: 60px; z-index: 20;
+    background: rgba(17,24,39,0.92); backdrop-filter: blur(12px);
+    border: 1px solid #1F2937; border-radius: 8px;
+    padding: 12px 16px; max-width: 260px; font-size: 10px;
+  }
+  .info-card h2 { font-size: 13px; font-weight: 700; color: #3B82F6; margin-bottom: 6px; }
+  .info-card p { color: #6B7280; line-height: 1.5; margin-bottom: 4px; }
+  .info-card .tag {
+    display: inline-block; background: rgba(59,130,246,0.15);
+    color: #3B82F6; padding: 2px 8px; border-radius: 4px;
+    font-size: 9px; font-weight: 600; margin-right: 4px; margin-top: 4px;
   }
 
-  /* Location Buttons */
+  /* Location Nav */
   .location-nav {
-    position: absolute;
-    bottom: 40px;
-    left: 12px;
-    z-index: 10;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+    position: absolute; bottom: 40px; left: 12px; z-index: 20;
+    display: flex; flex-direction: column; gap: 4px;
   }
   .loc-btn {
-    background: rgba(17, 24, 39, 0.92);
-    backdrop-filter: blur(12px);
-    border: 1px solid #1F2937;
-    border-radius: 6px;
-    padding: 6px 12px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    color: #E5E7EB;
-    cursor: pointer;
-    transition: all 0.15s;
-    text-align: left;
+    background: rgba(17,24,39,0.92); backdrop-filter: blur(12px);
+    border: 1px solid #1F2937; border-radius: 6px;
+    padding: 6px 12px; font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; color: #E5E7EB; cursor: pointer; transition: all 0.15s; text-align: left;
   }
-  .loc-btn:hover {
-    background: rgba(59, 130, 246, 0.15);
-    border-color: #3B82F6;
-    color: #3B82F6;
-  }
+  .loc-btn:hover { background: rgba(59,130,246,0.15); border-color: #3B82F6; color: #3B82F6; }
   .loc-btn .loc-label { display: block; font-weight: 600; }
   .loc-btn .loc-desc { color: #6B7280; font-size: 9px; }
 
-  /* Loading Screen */
+  /* Status Bar */
+  .status-bar {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 28px; z-index: 20;
+    background: rgba(17,24,39,0.85); backdrop-filter: blur(8px);
+    border-top: 1px solid #1F2937;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 12px; font-size: 10px;
+  }
+  .status-bar .phase { color: #6B7280; }
+  .status-bar .engine-status { display: flex; align-items: center; gap: 6px; color: #6B7280; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #22C55E; }
+
+  /* Loading */
   .loading-screen {
-    position: fixed;
-    inset: 0;
-    background: #0A1628;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-    transition: opacity 0.8s;
+    position: fixed; inset: 0; background: #0A1628;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; transition: opacity 0.8s;
   }
   .loading-screen.fade { opacity: 0; pointer-events: none; }
-  .loading-title {
-    font-size: 32px;
-    font-weight: 700;
-    color: #3B82F6;
-    animation: pulse 2s ease-in-out infinite;
-  }
+  .loading-title { font-size: 32px; font-weight: 700; color: #3B82F6; animation: pulse 2s ease-in-out infinite; }
   .loading-sub { font-size: 12px; color: #6B7280; margin-top: 8px; text-align: center; }
-  
-  @keyframes pulse {
-    0%, 100% { opacity: 0.4; }
-    50% { opacity: 1; }
-  }
+  @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
 
   /* Mapbox control overrides */
   .mapboxgl-ctrl-group { background: #111827 !important; border: 1px solid #1F2937 !important; }
   .mapboxgl-ctrl-group button { filter: invert(1); }
   .mapboxgl-ctrl-scale {
-    background: rgba(17,24,39,0.8) !important;
-    color: #E5E7EB !important;
-    border-color: #374151 !important;
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 10px !important;
+    background: rgba(17,24,39,0.8) !important; color: #E5E7EB !important;
+    border-color: #374151 !important; font-family: 'JetBrains Mono', monospace !important; font-size: 10px !important;
   }
 </style>
 </head>
 <body>
 
-<!-- Loading Screen -->
+<!-- Loading -->
 <div class="loading-screen" id="loading">
   <div>
     <div class="loading-title">PublicOS 2.0</div>
-    <div class="loading-sub">Initializing spatial engine...</div>
+    <div class="loading-sub">Initializing dual spatial engines...</div>
   </div>
 </div>
 
-<!-- Map Container -->
-<div id="map"></div>
+<!-- Map Containers -->
+<div id="mapbox-container"></div>
+<div id="cesium-container" class="hidden"></div>
 
-<!-- Coordinate Display -->
+<!-- Engine Switcher -->
+<div class="engine-switcher">
+  <button class="engine-btn active" id="btn-mapbox" onclick="switchEngine('mapbox')">
+    <span class="dot"></span> Mapbox 2.5D
+  </button>
+  <button class="engine-btn" id="btn-cesium" onclick="switchEngine('cesium')">
+    <span class="dot"></span> Cesium 3D
+  </button>
+</div>
+
+<!-- Info Card -->
+<div class="info-card" id="info-card">
+  <h2 id="info-title">Mapbox GL JS v3</h2>
+  <p id="info-desc">都市レベルの高速レンダリング。ベクタータイル + 3D建物 + 地形。消防・配送の業務分析に最適。</p>
+  <div id="info-tags">
+    <span class="tag">2.5D</span>
+    <span class="tag">Vector Tiles</span>
+    <span class="tag">deck.gl</span>
+    <span class="tag">60fps</span>
+  </div>
+</div>
+
+<!-- Coordinates -->
 <div class="coord-display" id="coords">
   <div>
-    <span class="label">LNG </span><span class="value" id="coord-lng">—</span>
-    <span class="label" style="margin-left:12px">LAT </span><span class="value" id="coord-lat">—</span>
+    <span class="label">LNG </span><span class="value" id="c-lng">—</span>
+    <span class="label" style="margin-left:12px">LAT </span><span class="value" id="c-lat">—</span>
   </div>
   <div>
-    <span class="label">ZOOM </span><span class="value" id="coord-zoom">—</span>
-    <span class="label" style="margin-left:12px">PITCH </span><span class="value" id="coord-pitch">—</span>
-    <span class="label" style="margin-left:12px">BEARING </span><span class="value" id="coord-bearing">—</span>
+    <span class="label">ZOOM </span><span class="value" id="c-zoom">—</span>
+    <span class="label" style="margin-left:12px">ALT </span><span class="value" id="c-alt">—</span>
+    <span class="label" style="margin-left:12px">ENGINE </span><span class="value" id="c-engine">MAPBOX</span>
   </div>
 </div>
 
-<!-- Title Card -->
-<div class="title-card">
-  <h1>Phase 1: Sovereign Foundation</h1>
-  <p>
-    Mapbox GL JS v3 + deck.gl interleaved<br>
-    3D terrain · Building extrusions · Sky layer<br>
-    <span style="color:#3B82F6">Drag / scroll / right-click+drag to explore</span>
-  </p>
-</div>
-
-<!-- Location Navigation -->
+<!-- Location Nav -->
 <div class="location-nav">
-  <button class="loc-btn" onclick="flyToLocation(132.4553, 34.3853, 14.5, 60, -20)">
+  <button class="loc-btn" onclick="flyTo(132.4553, 34.3853, 14.5, 60)">
     <span class="loc-label">広島市</span>
     <span class="loc-desc">Home — 消防局エリア</span>
   </button>
-  <button class="loc-btn" onclick="flyToLocation(139.7670, 35.6812, 15.5, 60, 30)">
+  <button class="loc-btn" onclick="flyTo(139.7670, 35.6812, 15.5, 60)">
     <span class="loc-label">東京 丸の内</span>
     <span class="loc-desc">3D Buildings Demo</span>
   </button>
-  <button class="loc-btn" onclick="flyToLocation(135.5023, 34.6937, 15, 55, -15)">
+  <button class="loc-btn" onclick="flyTo(135.5023, 34.6937, 15, 55)">
     <span class="loc-label">大阪 梅田</span>
     <span class="loc-desc">Dense Urban Area</span>
   </button>
-  <button class="loc-btn" onclick="flyToLocation(130.4017, 33.5904, 14, 50, 10)">
-    <span class="loc-label">福岡 天神</span>
-    <span class="loc-desc">Terrain + City</span>
-  </button>
-  <button class="loc-btn" onclick="flyToLocation(132.4553, 34.3853, 11, 70, 40)">
+  <button class="loc-btn" onclick="flyTo(132.4553, 34.3853, 11, 70)">
     <span class="loc-label">広島 広域</span>
     <span class="loc-desc">Terrain Overview</span>
+  </button>
+  <button class="loc-btn" onclick="flyTo(139.69, 35.69, 17, 75)">
+    <span class="loc-label">新宿 高層ビル群</span>
+    <span class="loc-desc">Cesiumで見ると圧巻</span>
   </button>
 </div>
 
 <!-- Status Bar -->
 <div class="status-bar">
-  <span class="phase">PublicOS 2.0 — Phase 1: Sovereign Foundation</span>
+  <span class="phase">PublicOS 2.0 — Dual Engine: Mapbox + Cesium</span>
   <span class="engine-status">
-    <span class="status-dot" id="status-dot"></span>
-    <span id="status-text">Loading...</span>
+    <span class="status-dot"></span>
+    <span id="status-text">Ready</span>
   </span>
 </div>
 
 <script>
 // =========================================================================
-// PublicOS 2.0 — Phase 1: Sovereign Foundation
-// Mapbox GL JS v3 + deck.gl Interleaved Rendering
+// PublicOS 2.0 — Dual Engine: Mapbox GL JS v3 + CesiumJS
 // =========================================================================
 
+let currentEngine = 'mapbox';
+let mapboxMap = null;
+let cesiumViewer = null;
+let cesiumReady = false;
+
+// --- Mapbox Initialization ---
 mapboxgl.accessToken = 'pk.eyJ1IjoieWtvZmZzaG9yZSIsImEiOiJjbWxhMXZyMDEwODBwM2NzOWJ0ZnQ5eXhyIn0.4oPrQipt35-MlYZgYr4XTw';
 
-const map = new mapboxgl.Map({
-  container: 'map',
+mapboxMap = new mapboxgl.Map({
+  container: 'mapbox-container',
   style: 'mapbox://styles/mapbox/dark-v11',
-  center: [132.4553, 34.3853], // Hiroshima
-  zoom: 12,
-  pitch: 45,
-  bearing: 0,
-  antialias: true,
+  center: [132.4553, 34.3853],
+  zoom: 12, pitch: 45, bearing: 0, antialias: true,
 });
 
-// --- deck.gl Interleaved Overlay ---
-const deckOverlay = new deck.MapboxOverlay({
-  interleaved: true,
-  layers: [],
-});
-map.addControl(deckOverlay);
+const deckOverlay = new deck.MapboxOverlay({ interleaved: true, layers: [] });
+mapboxMap.addControl(deckOverlay);
+mapboxMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
+mapboxMap.addControl(new mapboxgl.ScaleControl({ maxWidth: 200, unit: 'metric' }), 'bottom-left');
 
-// --- Controls ---
-map.addControl(new mapboxgl.NavigationControl(), 'top-right');
-map.addControl(new mapboxgl.ScaleControl({ maxWidth: 200, unit: 'metric' }), 'bottom-left');
-
-// --- Style Load Event ---
-map.on('style.load', () => {
-  // Mapbox DEM Terrain
-  map.addSource('mapbox-dem', {
-    type: 'raster-dem',
-    url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
-    tileSize: 512,
-    maxzoom: 14,
+mapboxMap.on('style.load', () => {
+  // Terrain
+  mapboxMap.addSource('mapbox-dem', {
+    type: 'raster-dem', url: 'mapbox://mapbox.mapbox-terrain-dem-v1', tileSize: 512, maxzoom: 14,
   });
-  map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+  mapboxMap.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
 
-  // Sky / Atmosphere
-  map.addLayer({
-    id: 'sky',
-    type: 'sky',
-    paint: {
-      'sky-type': 'atmosphere',
-      'sky-atmosphere-sun': [0.0, 45.0],
-      'sky-atmosphere-sun-intensity': 15,
-    },
+  // Sky
+  mapboxMap.addLayer({
+    id: 'sky', type: 'sky',
+    paint: { 'sky-type': 'atmosphere', 'sky-atmosphere-sun': [0, 45], 'sky-atmosphere-sun-intensity': 15 },
   });
 
-  // 3D Building Extrusions
-  const layers = map.getStyle().layers;
-  const labelLayerId = layers.find(
-    (layer) => layer.type === 'symbol' && layer.layout && layer.layout['text-field']
-  );
-
-  map.addLayer({
-    id: '3d-buildings',
-    source: 'composite',
-    'source-layer': 'building',
-    filter: ['==', 'extrude', 'true'],
-    type: 'fill-extrusion',
-    minzoom: 14,
+  // 3D Buildings
+  const labelLayer = mapboxMap.getStyle().layers.find(l => l.type === 'symbol' && l.layout?.['text-field']);
+  mapboxMap.addLayer({
+    id: '3d-buildings', source: 'composite', 'source-layer': 'building',
+    filter: ['==', 'extrude', 'true'], type: 'fill-extrusion', minzoom: 14,
     paint: {
-      'fill-extrusion-color': [
-        'interpolate', ['linear'], ['get', 'height'],
-        0, '#1a1a2e',
-        50, '#16213e',
-        100, '#0f3460',
-        200, '#533483',
-      ],
-      'fill-extrusion-height': [
-        'interpolate', ['linear'], ['zoom'],
-        14, 0,
-        14.05, ['get', 'height'],
-      ],
-      'fill-extrusion-base': [
-        'interpolate', ['linear'], ['zoom'],
-        14, 0,
-        14.05, ['get', 'min_height'],
-      ],
+      'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'height'],
+        0, '#1a1a2e', 50, '#16213e', 100, '#0f3460', 200, '#533483'],
+      'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.05, ['get', 'height']],
+      'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.05, ['get', 'min_height']],
       'fill-extrusion-opacity': 0.75,
     },
-  }, labelLayerId ? labelLayerId.id : undefined);
+  }, labelLayer?.id);
 });
 
-// --- Coordinate Display ---
-map.on('mousemove', (e) => {
-  document.getElementById('coord-lng').textContent = e.lngLat.lng.toFixed(4);
-  document.getElementById('coord-lat').textContent = e.lngLat.lat.toFixed(4);
-  document.getElementById('coord-zoom').textContent = map.getZoom().toFixed(1);
-  document.getElementById('coord-pitch').textContent = map.getPitch().toFixed(0) + '°';
-  document.getElementById('coord-bearing').textContent = map.getBearing().toFixed(0) + '°';
+mapboxMap.on('mousemove', (e) => {
+  if (currentEngine !== 'mapbox') return;
+  document.getElementById('c-lng').textContent = e.lngLat.lng.toFixed(4);
+  document.getElementById('c-lat').textContent = e.lngLat.lat.toFixed(4);
+  document.getElementById('c-zoom').textContent = mapboxMap.getZoom().toFixed(1);
+  document.getElementById('c-alt').textContent = '—';
 });
 
-map.on('move', () => {
-  document.getElementById('coord-zoom').textContent = map.getZoom().toFixed(1);
-  document.getElementById('coord-pitch').textContent = map.getPitch().toFixed(0) + '°';
-  document.getElementById('coord-bearing').textContent = map.getBearing().toFixed(0) + '°';
+mapboxMap.on('move', () => {
+  if (currentEngine !== 'mapbox') return;
+  document.getElementById('c-zoom').textContent = mapboxMap.getZoom().toFixed(1);
 });
 
-// --- Loading State ---
-map.on('load', () => {
-  document.getElementById('status-dot').classList.add('ready');
-  document.getElementById('status-text').textContent = 'Engine Ready — Interleaved Mode';
-  
-  setTimeout(() => {
-    document.getElementById('loading').classList.add('fade');
-  }, 500);
-
-  console.info('[PublicOS] Phase 1: Sovereign Foundation — initialized');
-  console.info('[PublicOS] Mapbox GL JS v3 + deck.gl interleaved');
-  console.info('[PublicOS] 3D terrain, buildings, sky enabled');
+mapboxMap.on('load', () => {
+  document.getElementById('loading').classList.add('fade');
+  console.info('[PublicOS] Mapbox engine ready');
 });
 
-// --- Navigation Helper ---
-function flyToLocation(lng, lat, zoom, pitch, bearing) {
-  map.flyTo({
-    center: [lng, lat],
-    zoom: zoom,
-    pitch: pitch,
-    bearing: bearing,
-    duration: 3000,
-    essential: true,
+// --- Cesium Lazy Initialization ---
+function initCesium() {
+  if (cesiumViewer) return;
+
+  Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI1ZGE4YzY1NS0wMjdmLTQ4NjMtOWQ1ZC05MTNmMDFhYWU3OWIiLCJpZCI6MjY5NzIzLCJpYXQiOjE3MzY3Mjk3MDB9.jRFkNSDE5YEbQDChn3D5znRkSNBnZgQOSfAMwBDCH_A';
+
+  cesiumViewer = new Cesium.Viewer('cesium-container', {
+    terrain: Cesium.Terrain.fromWorldTerrain(),
+    baseLayerPicker: true,
+    geocoder: false,
+    homeButton: false,
+    sceneModePicker: false,
+    navigationHelpButton: false,
+    infoBox: false,
+    selectionIndicator: false,
+    timeline: false,
+    animation: false,
+    fullscreenButton: false,
+    creditContainer: document.createElement('div'),
   });
+
+  // Dark atmosphere
+  cesiumViewer.scene.globe.enableLighting = true;
+  cesiumViewer.scene.fog.enabled = true;
+  cesiumViewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#0A1628');
+
+  // Cesium OSM Buildings
+  Cesium.createOsmBuildingsAsync().then(tileset => {
+    cesiumViewer.scene.primitives.add(tileset);
+    tileset.style = new Cesium.Cesium3DTileStyle({
+      color: {
+        conditions: [
+          ['${feature["cesium#estimatedHeight"]} >= 100', 'color("#533483", 0.8)'],
+          ['${feature["cesium#estimatedHeight"]} >= 50', 'color("#0f3460", 0.8)'],
+          ['${feature["cesium#estimatedHeight"]} >= 20', 'color("#16213e", 0.8)'],
+          ['true', 'color("#1a1a2e", 0.75)'],
+        ],
+      },
+    });
+    console.info('[PublicOS] Cesium OSM Buildings loaded');
+  });
+
+  // Track mouse in Cesium
+  const handler = new Cesium.ScreenSpaceEventHandler(cesiumViewer.scene.canvas);
+  handler.setInputAction((movement) => {
+    if (currentEngine !== 'cesium') return;
+    const cartesian = cesiumViewer.scene.pickPosition(movement.endPosition);
+    if (cartesian) {
+      const carto = Cesium.Cartographic.fromCartesian(cartesian);
+      document.getElementById('c-lng').textContent = Cesium.Math.toDegrees(carto.longitude).toFixed(4);
+      document.getElementById('c-lat').textContent = Cesium.Math.toDegrees(carto.latitude).toFixed(4);
+      document.getElementById('c-alt').textContent = carto.height.toFixed(0) + 'm';
+      document.getElementById('c-zoom').textContent = '—';
+    }
+  }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+  cesiumReady = true;
+  console.info('[PublicOS] Cesium engine ready');
+}
+
+// --- Engine Switcher ---
+function switchEngine(engine) {
+  if (engine === currentEngine) return;
+
+  // Sync camera position before switching
+  let lng, lat, alt, heading, pitch;
+
+  if (currentEngine === 'mapbox') {
+    const center = mapboxMap.getCenter();
+    lng = center.lng;
+    lat = center.lat;
+    alt = zoomToAltitude(mapboxMap.getZoom());
+    heading = mapboxMap.getBearing();
+    pitch = mapboxMap.getPitch();
+  } else {
+    const cam = cesiumViewer.camera;
+    const carto = Cesium.Cartographic.fromCartesian(cam.position);
+    lng = Cesium.Math.toDegrees(carto.longitude);
+    lat = Cesium.Math.toDegrees(carto.latitude);
+    alt = carto.height;
+    heading = Cesium.Math.toDegrees(cam.heading);
+    pitch = Cesium.Math.toDegrees(cam.pitch);
+  }
+
+  currentEngine = engine;
+
+  if (engine === 'cesium') {
+    if (!cesiumViewer) initCesium();
+
+    document.getElementById('mapbox-container').classList.add('hidden');
+    document.getElementById('cesium-container').classList.remove('hidden');
+
+    cesiumViewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(lng, lat, alt),
+      orientation: {
+        heading: Cesium.Math.toRadians(heading || 0),
+        pitch: Cesium.Math.toRadians(-(90 - (pitch || 45))),
+        roll: 0,
+      },
+      duration: 0,
+    });
+
+    document.getElementById('c-engine').textContent = 'CESIUM';
+    document.getElementById('info-title').textContent = 'CesiumJS 1.119';
+    document.getElementById('info-desc').textContent = 'WGS84楕円体ベースの真の3D地球儀。高度・視線計算が物理的に正確。ドローン飛行・広域災害に最適。';
+    document.getElementById('info-tags').innerHTML = '<span class="tag">True 3D</span><span class="tag">WGS84</span><span class="tag">3D Tiles</span><span class="tag">Globe</span>';
+
+  } else {
+    document.getElementById('cesium-container').classList.add('hidden');
+    document.getElementById('mapbox-container').classList.remove('hidden');
+
+    mapboxMap.flyTo({
+      center: [lng, lat],
+      zoom: altitudeToZoom(alt),
+      bearing: heading || 0,
+      pitch: Math.min(pitch || 45, 85),
+      duration: 0,
+    });
+    mapboxMap.resize();
+
+    document.getElementById('c-engine').textContent = 'MAPBOX';
+    document.getElementById('info-title').textContent = 'Mapbox GL JS v3';
+    document.getElementById('info-desc').textContent = '都市レベルの高速レンダリング。ベクタータイル + 3D建物 + 地形。消防・配送の業務分析に最適。';
+    document.getElementById('info-tags').innerHTML = '<span class="tag">2.5D</span><span class="tag">Vector Tiles</span><span class="tag">deck.gl</span><span class="tag">60fps</span>';
+  }
+
+  // Update button states
+  document.getElementById('btn-mapbox').classList.toggle('active', engine === 'mapbox');
+  document.getElementById('btn-cesium').classList.toggle('active', engine === 'cesium');
+  document.getElementById('status-text').textContent = engine === 'mapbox' ? 'Mapbox — Interleaved' : 'Cesium — WGS84 Globe';
+}
+
+// --- Navigation ---
+function flyTo(lng, lat, zoom, pitch) {
+  if (currentEngine === 'mapbox') {
+    mapboxMap.flyTo({ center: [lng, lat], zoom, pitch, bearing: 0, duration: 3000, essential: true });
+  } else {
+    const alt = zoomToAltitude(zoom);
+    cesiumViewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(lng, lat, alt),
+      orientation: {
+        heading: 0,
+        pitch: Cesium.Math.toRadians(-(90 - pitch)),
+        roll: 0,
+      },
+      duration: 3,
+    });
+  }
+}
+
+// --- Zoom <-> Altitude conversion ---
+function zoomToAltitude(zoom) {
+  return 40075016.686 * Math.cos(34.385 * Math.PI / 180) / Math.pow(2, zoom + 8) * 150;
+}
+
+function altitudeToZoom(alt) {
+  if (!alt || alt <= 0) return 12;
+  return Math.log2(40075016.686 * Math.cos(34.385 * Math.PI / 180) / (alt / 150)) - 8;
 }
 </script>
 </body>
