@@ -7,8 +7,6 @@
  * - interleaved: true → deck.gl shares Mapbox's WebGL2 context
  * - Shared depth buffer enables correct occlusion between Mapbox 3D buildings
  *   and deck.gl simulation layers (particles, drones, etc.)
- *
- * @see https://deck.gl/docs/api-reference/mapbox/mapbox-overlay
  */
 
 import mapboxgl from 'mapbox-gl';
@@ -24,13 +22,9 @@ import { DEFAULT_MAP_CONFIG } from '@/types/map';
 export interface MapEngine {
   map: mapboxgl.Map;
   overlay: MapboxOverlay;
-  /** Update deck.gl layers without re-creating the overlay */
   setLayers: (layers: Layer[]) => void;
-  /** Animate camera to a target view state */
   flyTo: (target: Partial<ViewState>, duration?: number) => void;
-  /** Get current view state */
   getViewState: () => ViewState;
-  /** Clean up all resources */
   destroy: () => void;
 }
 
@@ -38,20 +32,13 @@ export interface MapEngine {
 // Initialization
 // ---------------------------------------------------------------------------
 
-/**
- * Creates and returns the PublicOS map engine instance.
- *
- * @param container - DOM element to mount the map into
- * @param config - Engine configuration (defaults to Hiroshima-centered view)
- * @returns Fully initialized MapEngine with interleaved deck.gl overlay
- */
 export function createMapEngine(
   container: HTMLElement,
   config: Partial<MapEngineConfig> = {}
 ): MapEngine {
   const cfg = { ...DEFAULT_MAP_CONFIG, ...config };
 
-  // --- Mapbox GL JS v3 Initialization ---
+  // --- Mapbox GL JS v3 ---
   mapboxgl.accessToken = cfg.mapboxToken;
 
   const map = new mapboxgl.Map({
@@ -62,8 +49,6 @@ export function createMapEngine(
     pitch: cfg.initialViewState.pitch,
     bearing: cfg.initialViewState.bearing,
     antialias: true,
-    // Enable WebGL2 for interleaved mode compatibility
-    useWebGL2: true,
   });
 
   // --- deck.gl MapboxOverlay (Interleaved) ---
@@ -74,23 +59,66 @@ export function createMapEngine(
 
   map.addControl(overlay as unknown as mapboxgl.IControl);
 
-  // --- Terrain Setup (GSI Terrain-RGB) ---
-  if (cfg.terrain.enabled) {
-    map.on('style.load', () => {
-      map.addSource('gsi-terrain', {
+  // --- Style Load: Terrain, 3D Buildings, Sky ---
+  map.on('style.load', () => {
+    // Terrain (Mapbox DEM)
+    if (cfg.terrain.enabled) {
+      map.addSource('mapbox-dem', {
         type: 'raster-dem',
-        tiles: [cfg.terrain.source],
-        tileSize: 256,
-        maxzoom: 15,
-        attribution: '© 国土地理院',
+        url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+        tileSize: 512,
+        maxzoom: 14,
       });
 
       map.setTerrain({
-        source: 'gsi-terrain',
+        source: 'mapbox-dem',
         exaggeration: cfg.terrain.exaggeration,
       });
+    }
+
+    // Sky / Atmosphere
+    map.addLayer({
+      id: 'sky',
+      type: 'sky',
+      paint: {
+        'sky-type': 'atmosphere',
+        'sky-atmosphere-sun': [0.0, 45.0],
+        'sky-atmosphere-sun-intensity': 15,
+      },
     });
-  }
+
+    // 3D Building extrusions
+    const layers = map.getStyle().layers;
+    const labelLayerId = layers?.find(
+      (layer) => layer.type === 'symbol' && layer.layout?.['text-field']
+    )?.id;
+
+    map.addLayer(
+      {
+        id: '3d-buildings',
+        source: 'composite',
+        'source-layer': 'building',
+        filter: ['==', 'extrude', 'true'],
+        type: 'fill-extrusion',
+        minzoom: 14,
+        paint: {
+          'fill-extrusion-color': '#1a1a2e',
+          'fill-extrusion-height': [
+            'interpolate', ['linear'], ['zoom'],
+            14, 0,
+            14.05, ['get', 'height'],
+          ],
+          'fill-extrusion-base': [
+            'interpolate', ['linear'], ['zoom'],
+            14, 0,
+            14.05, ['get', 'min_height'],
+          ],
+          'fill-extrusion-opacity': 0.7,
+        },
+      },
+      labelLayerId
+    );
+  });
 
   // --- Navigation Controls ---
   map.addControl(new mapboxgl.NavigationControl(), 'top-right');

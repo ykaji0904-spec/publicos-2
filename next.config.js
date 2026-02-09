@@ -2,15 +2,14 @@
 const nextConfig = {
   reactStrictMode: true,
 
-  // Enable WebAssembly for plugin sandbox (Phase 4)
   webpack: (config, { isServer }) => {
+    // Enable WebAssembly for plugin sandbox (Phase 4)
     config.experiments = {
       ...config.experiments,
       asyncWebAssembly: true,
       layers: true,
     };
 
-    // Mapbox GL JS requires this for production builds
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
@@ -23,26 +22,8 @@ const nextConfig = {
     return config;
   },
 
-  // Optimize for map tile loading via edge caching
-  images: {
-    remotePatterns: [
-      { protocol: 'https', hostname: 'cyberjapandata.gsi.go.jp' },
-      { protocol: 'https', hostname: '*.tiles.mapbox.com' },
-    ],
-  },
-
-  // Headers for COOP/COEP (required for SharedArrayBuffer in WASM workers)
-  async headers() {
-    return [
-      {
-        source: '/(.*)',
-        headers: [
-          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
-          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' },
-        ],
-      },
-    ];
-  },
+  // Transpile mapbox-gl for Next.js compatibility
+  transpilePackages: ['mapbox-gl'],
 };
 
 module.exports = nextConfig;
