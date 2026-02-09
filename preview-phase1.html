@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PublicOS 2.0 — Phase 1: Sovereign Foundation</title>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet" />
+<script src="https://unpkg.com/deck.gl@9.0.16/dist.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap');
+  
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    font-family: 'JetBrains Mono', monospace;
+    background: #0A1628;
+    color: #E5E7EB;
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  #map { position: absolute; inset: 0; }
+
+  /* Coordinate Display */
+  .coord-display {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
+    background: rgba(17, 24, 39, 0.92);
+    backdrop-filter: blur(12px);
+    border: 1px solid #1F2937;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 11px;
+    line-height: 1.6;
+    pointer-events: none;
+  }
+  .coord-display .label { color: #6B7280; }
+  .coord-display .value { color: #3B82F6; font-weight: 600; }
+
+  /* Status Bar */
+  .status-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 28px;
+    background: rgba(17, 24, 39, 0.85);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid #1F2937;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    font-size: 10px;
+    z-index: 10;
+  }
+  .status-bar .phase { color: #6B7280; }
+  .status-bar .engine-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #6B7280;
+  }
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #FBBF24;
+    transition: background 0.3s;
+  }
+  .status-dot.ready { background: #22C55E; }
+
+  /* Title Card */
+  .title-card {
+    position: absolute;
+    top: 12px;
+    right: 60px;
+    z-index: 10;
+    background: rgba(17, 24, 39, 0.92);
+    backdrop-filter: blur(12px);
+    border: 1px solid #1F2937;
+    border-radius: 8px;
+    padding: 12px 16px;
+    max-width: 280px;
+  }
+  .title-card h1 {
+    font-size: 14px;
+    font-weight: 700;
+    color: #3B82F6;
+    margin-bottom: 4px;
+  }
+  .title-card p {
+    font-size: 10px;
+    color: #6B7280;
+    line-height: 1.5;
+  }
+
+  /* Location Buttons */
+  .location-nav {
+    position: absolute;
+    bottom: 40px;
+    left: 12px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .loc-btn {
+    background: rgba(17, 24, 39, 0.92);
+    backdrop-filter: blur(12px);
+    border: 1px solid #1F2937;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #E5E7EB;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+  }
+  .loc-btn:hover {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: #3B82F6;
+    color: #3B82F6;
+  }
+  .loc-btn .loc-label { display: block; font-weight: 600; }
+  .loc-btn .loc-desc { color: #6B7280; font-size: 9px; }
+
+  /* Loading Screen */
+  .loading-screen {
+    position: fixed;
+    inset: 0;
+    background: #0A1628;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    transition: opacity 0.8s;
+  }
+  .loading-screen.fade { opacity: 0; pointer-events: none; }
+  .loading-title {
+    font-size: 32px;
+    font-weight: 700;
+    color: #3B82F6;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .loading-sub { font-size: 12px; color: #6B7280; margin-top: 8px; text-align: center; }
+  
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  /* Mapbox control overrides */
+  .mapboxgl-ctrl-group { background: #111827 !important; border: 1px solid #1F2937 !important; }
+  .mapboxgl-ctrl-group button { filter: invert(1); }
+  .mapboxgl-ctrl-scale {
+    background: rgba(17,24,39,0.8) !important;
+    color: #E5E7EB !important;
+    border-color: #374151 !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 10px !important;
+  }
+</style>
+</head>
+<body>
+
+<!-- Loading Screen -->
+<div class="loading-screen" id="loading">
+  <div>
+    <div class="loading-title">PublicOS 2.0</div>
+    <div class="loading-sub">Initializing spatial engine...</div>
+  </div>
+</div>
+
+<!-- Map Container -->
+<div id="map"></div>
+
+<!-- Coordinate Display -->
+<div class="coord-display" id="coords">
+  <div>
+    <span class="label">LNG </span><span class="value" id="coord-lng">—</span>
+    <span class="label" style="margin-left:12px">LAT </span><span class="value" id="coord-lat">—</span>
+  </div>
+  <div>
+    <span class="label">ZOOM </span><span class="value" id="coord-zoom">—</span>
+    <span class="label" style="margin-left:12px">PITCH </span><span class="value" id="coord-pitch">—</span>
+    <span class="label" style="margin-left:12px">BEARING </span><span class="value" id="coord-bearing">—</span>
+  </div>
+</div>
+
+<!-- Title Card -->
+<div class="title-card">
+  <h1>Phase 1: Sovereign Foundation</h1>
+  <p>
+    Mapbox GL JS v3 + deck.gl interleaved<br>
+    3D terrain · Building extrusions · Sky layer<br>
+    <span style="color:#3B82F6">Drag / scroll / right-click+drag to explore</span>
+  </p>
+</div>
+
+<!-- Location Navigation -->
+<div class="location-nav">
+  <button class="loc-btn" onclick="flyToLocation(132.4553, 34.3853, 14.5, 60, -20)">
+    <span class="loc-label">広島市</span>
+    <span class="loc-desc">Home — 消防局エリア</span>
+  </button>
+  <button class="loc-btn" onclick="flyToLocation(139.7670, 35.6812, 15.5, 60, 30)">
+    <span class="loc-label">東京 丸の内</span>
+    <span class="loc-desc">3D Buildings Demo</span>
+  </button>
+  <button class="loc-btn" onclick="flyToLocation(135.5023, 34.6937, 15, 55, -15)">
+    <span class="loc-label">大阪 梅田</span>
+    <span class="loc-desc">Dense Urban Area</span>
+  </button>
+  <button class="loc-btn" onclick="flyToLocation(130.4017, 33.5904, 14, 50, 10)">
+    <span class="loc-label">福岡 天神</span>
+    <span class="loc-desc">Terrain + City</span>
+  </button>
+  <button class="loc-btn" onclick="flyToLocation(132.4553, 34.3853, 11, 70, 40)">
+    <span class="loc-label">広島 広域</span>
+    <span class="loc-desc">Terrain Overview</span>
+  </button>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar">
+  <span class="phase">PublicOS 2.0 — Phase 1: Sovereign Foundation</span>
+  <span class="engine-status">
+    <span class="status-dot" id="status-dot"></span>
+    <span id="status-text">Loading...</span>
+  </span>
+</div>
+
+<script>
+// =========================================================================
+// PublicOS 2.0 — Phase 1: Sovereign Foundation
+// Mapbox GL JS v3 + deck.gl Interleaved Rendering
+// =========================================================================
+
+mapboxgl.accessToken = 'pk.eyJ1IjoieWtvZmZzaG9yZSIsImEiOiJjbWxhMXZyMDEwODBwM2NzOWJ0ZnQ5eXhyIn0.4oPrQipt35-MlYZgYr4XTw';
+
+const map = new mapboxgl.Map({
+  container: 'map',
+  style: 'mapbox://styles/mapbox/dark-v11',
+  center: [132.4553, 34.3853], // Hiroshima
+  zoom: 12,
+  pitch: 45,
+  bearing: 0,
+  antialias: true,
+});
+
+// --- deck.gl Interleaved Overlay ---
+const deckOverlay = new deck.MapboxOverlay({
+  interleaved: true,
+  layers: [],
+});
+map.addControl(deckOverlay);
+
+// --- Controls ---
+map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+map.addControl(new mapboxgl.ScaleControl({ maxWidth: 200, unit: 'metric' }), 'bottom-left');
+
+// --- Style Load Event ---
+map.on('style.load', () => {
+  // Mapbox DEM Terrain
+  map.addSource('mapbox-dem', {
+    type: 'raster-dem',
+    url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+    tileSize: 512,
+    maxzoom: 14,
+  });
+  map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+
+  // Sky / Atmosphere
+  map.addLayer({
+    id: 'sky',
+    type: 'sky',
+    paint: {
+      'sky-type': 'atmosphere',
+      'sky-atmosphere-sun': [0.0, 45.0],
+      'sky-atmosphere-sun-intensity': 15,
+    },
+  });
+
+  // 3D Building Extrusions
+  const layers = map.getStyle().layers;
+  const labelLayerId = layers.find(
+    (layer) => layer.type === 'symbol' && layer.layout && layer.layout['text-field']
+  );
+
+  map.addLayer({
+    id: '3d-buildings',
+    source: 'composite',
+    'source-layer': 'building',
+    filter: ['==', 'extrude', 'true'],
+    type: 'fill-extrusion',
+    minzoom: 14,
+    paint: {
+      'fill-extrusion-color': [
+        'interpolate', ['linear'], ['get', 'height'],
+        0, '#1a1a2e',
+        50, '#16213e',
+        100, '#0f3460',
+        200, '#533483',
+      ],
+      'fill-extrusion-height': [
+        'interpolate', ['linear'], ['zoom'],
+        14, 0,
+        14.05, ['get', 'height'],
+      ],
+      'fill-extrusion-base': [
+        'interpolate', ['linear'], ['zoom'],
+        14, 0,
+        14.05, ['get', 'min_height'],
+      ],
+      'fill-extrusion-opacity': 0.75,
+    },
+  }, labelLayerId ? labelLayerId.id : undefined);
+});
+
+// --- Coordinate Display ---
+map.on('mousemove', (e) => {
+  document.getElementById('coord-lng').textContent = e.lngLat.lng.toFixed(4);
+  document.getElementById('coord-lat').textContent = e.lngLat.lat.toFixed(4);
+  document.getElementById('coord-zoom').textContent = map.getZoom().toFixed(1);
+  document.getElementById('coord-pitch').textContent = map.getPitch().toFixed(0) + '°';
+  document.getElementById('coord-bearing').textContent = map.getBearing().toFixed(0) + '°';
+});
+
+map.on('move', () => {
+  document.getElementById('coord-zoom').textContent = map.getZoom().toFixed(1);
+  document.getElementById('coord-pitch').textContent = map.getPitch().toFixed(0) + '°';
+  document.getElementById('coord-bearing').textContent = map.getBearing().toFixed(0) + '°';
+});
+
+// --- Loading State ---
+map.on('load', () => {
+  document.getElementById('status-dot').classList.add('ready');
+  document.getElementById('status-text').textContent = 'Engine Ready — Interleaved Mode';
+  
+  setTimeout(() => {
+    document.getElementById('loading').classList.add('fade');
+  }, 500);
+
+  console.info('[PublicOS] Phase 1: Sovereign Foundation — initialized');
+  console.info('[PublicOS] Mapbox GL JS v3 + deck.gl interleaved');
+  console.info('[PublicOS] 3D terrain, buildings, sky enabled');
+});
+
+// --- Navigation Helper ---
+function flyToLocation(lng, lat, zoom, pitch, bearing) {
+  map.flyTo({
+    center: [lng, lat],
+    zoom: zoom,
+    pitch: pitch,
+    bearing: bearing,
+    duration: 3000,
+    essential: true,
+  });
+}
+</script>
+</body>
+</html>
